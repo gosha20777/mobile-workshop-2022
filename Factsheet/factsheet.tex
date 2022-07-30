@@ -1,0 +1,165 @@
+% Georgy Perevozchikov, gosha20777@live.ru
+
+\documentclass{article}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
+\usepackage{amssymb,amsfonts,amsmath} % Математика
+\usepackage{float} % Расширенное управление плавающими объектами
+
+\usepackage{listings} % Оформление исходного кода
+\lstset{
+    basicstyle=\small\ttfamily, % Размер и тип шрифта
+    tabsize=2, % Размер табуляции
+    literate={--}{{-{}-}}2 % Корректно отображать двойной дефис
+}
+
+% Гиперссылки
+\usepackage{hyperref}
+
+% Пользовательские функции
+\newcommand{\addimg}[4]{ % Добавление одного рисунка
+    \begin{figure}
+        \centering
+        \includegraphics[width=#2\linewidth]{#1}
+        \caption{#3} \label{#4}
+    \end{figure}
+}
+\newcommand{\addimghere}[4]{ % Добавить рисунок непосредственно в это место
+    \begin{figure}[H]
+        \centering
+        \includegraphics[width=#2\linewidth]{#1}
+        \caption{#3} \label{#4}
+    \end{figure}
+}
+
+\usepackage{biblatex}
+\addbibresource{ref.bib}
+
+
+\title{Mobile AI 2021 Challenge Factsheet \\ \vspace{6mm}
+{Learning End-to-End Deep Learning Based Image Signal Processing Pipeline Using Adversarial Domain Adaptation}
+}
+
+\author{Georgy Perevozchikov}
+
+\begin{document}
+
+\maketitle
+
+\bigskip
+
+\section{Team details}
+
+\bigskip
+
+\begin{itemize}
+\item \textbf{Team name:} DANN-ISP;
+\item \textbf{Leader:} Georgy Perevozchikov (Moscow, Russia, +7991120777, \href{mailto:perevozchikov.gp@phystech.edu)}{perevozchikov.gp@phystech.edu)}.
+
+\noindent\rule{12cm}{0.4pt}
+
+\item \textbf{Username:} gosha20777;
+
+\noindent\rule{12cm}{0.4pt}
+
+\item \textbf{Affiliation:} The Moscow Institute of Physics and Technology, 9 Institutskiy per., Dolgoprudny, 141701, Moscow, Russia;
+\item \textbf{Best metrics:} PSNR=23.145, SSIM=0.860;
+\item \textbf{Source code:} \href{https://github.com/gosha20777/mobile-workshop-2022}{https://github.com/gosha20777/mobile-workshop-2022}.
+
+\end{itemize}
+
+\smallskip
+
+\section{Detailed Method Description}
+
+\bigskip
+
+In fact, an image signal processing pipeline (ISP) consists of many steps such as demosaicing, color coordinate conversion, white balance determination, etc \cite{karaimer2016software}. Many of these algorithms do not have an exact solution and depend on many free variables. It is also worth noting that the quality of currently existing photography pipelines drops significantly when the pipeline is directly applied to a new camera sensor. To solve this problem, we present a new domain adaptation \cite{ganin2016domain} method for deep learning-based end-to-end ISP. We also show that it is sufficient to have a very small labeled dataset of the target domain to learn domain adaptation. Our method is also a lightweight neural network that can be efficiently run even on mobile devices.
+
+\subsection{Model architecture}
+
+The general model architecture is shown in the figure below \ref{main-arch}:
+
+\addimghere{main-arch}{0.9}{Model architecture}{main-arch}
+
+\textbf{Problem definition:} At first denote some data as the source domain. Its data consists of $N$ pairs of RAW and RGB images. Similarly, the target domain consists $M$ of input images and corresponding ground truth. Note that $N$ is much greater than $M$ ($N \geqslant M$). We train our model to generate RGB images with both source and target domains as input. Our method is illustrated in Fig. \ref{main-arch} with the source and target training pipelines. It is an end-to-end trainable deep network that takes the raw sensor arrays as input and performs image reconstruction utilizing the source data for domain adaptation to the target domain using a few target labeled samples. 
+
+\textbf{Pre-encoders:} The pre-encoder is a small convolutional network made up of three \textit{Convolution2D} layers with 3x3 cores and a number of filters - 8, 16, 32. Pre-encoders are needed in order to reduce the significant domain gap between different cameras by extracting individual and independent features from each one. 
+
+\textbf{Common U-Net:} A lightweight U-Net-like \cite{ronneberger2015u} autoencoder with 3 downsampling and 4 upsampling blocks. It takes a 32-channel image from each pre-encoder as input and produces two outputs: a 3-channel RGB image and a 256-dimensional vector from the bottleneck.
+
+\textbf{Domain classifier:} To reduce the gap between domains and increase the performance we add a binary domain classifier \cite{ganin2016domain} with an inverse gradient \cite{ganin2015unsupervised} using a convolutional neural network with \textit{GlobalAveragePooling2D} and two \textit{Dense} layers at the end.
+
+\textbf{Loss functions:} Firstly, it is worth noting that the learning process includes two phases. In the beginning, we pre-train the pipeline using only source domain data. At this stage, we use the following loss function: 
+$$
+Loss_{pretrain} = L_1 + VGG + (1 - MSSSIM) + L_{grb} + L_{exp\_fusion}.
+$$
+Here are:
+\begin{itemize}
+\item $MSSSIM$ is a multi-scale structural similarity \cite{wang2003multiscale};
+\item $VGG$ is perceptual-based VGG-19 loss;
+\item $L_{grb}$ is a color loss (measured as the cosine distance between the RGB vectors);
+\item $L_{exp\_fusion}$ is exposure fusion loss \cite{mertens2009exposure}.
+\end{itemize}
+In the second stage, we make domain adaptation using   source and target domain data together. In this case, we minimize three losses: 
+\begin{itemize}
+\item Loss for source domain: $Loss_{source}=L_1$;
+\item Loss for target domain: $Loss_{target}=VGG + (1 - MSSSIM) + L_{grb} + L_{exp\_fusion}$;
+\item Loss for domain classifier: $Loss_{classifier}=BCE$ (binary cross-entropy).
+\end{itemize}
+\smallskip
+
+\subsection{Training description}
+
+\textbf{Training data:} In fact, we use the whole data from Zurich-RAW-to-RGB \cite{ignatov2020replacing} as the source domain (46.8K images for training and 1.2K for testing), and a small part of the offered at the competitions data as the target domain (1K for training and 23.1K for testing).
+
+\textbf{Training process:} First, we perform pipeline pre-training on the source domain. At this stage, we use only the source domain pre-encoder and U-Net RBG output. We do not consider the outputs of the domain classifier, and do not use the target domain pre-encoder. Then we initialize the target pre-encoder by the weights from the source pre-encoder and train the whole network using source and target domains data (small part). During the domain adaptation stage at each training step, we sequentially feed images from the target and source domains to the corresponding pre-encoder and calculate the corresponding loss functions. In addition, we take into account the predictions of the domain classifier and the inverse gradient. In the proposed solution, we trained the model for 4 epochs for pre-training and 2 epochs for domain adaptation.
+
+\textbf{Results:} As a result, we got $PSNR=23.145$, $SSIM=0.860$ for the target domain and $PSNR=19.619$, $SSIM=0.725$ for the source one. We also trained the model from scratch using the whole target data (without domain adaptation) and got $PSNR=22.921$, $SSIM=0.855$. This experiment shows that domain adaptation achieves similar results using a small part of data compared to training on a full dataset (Fig. \ref{dann-example}).
+
+\addimghere{dann-example}{0.9}{Domain adaptation and whole dataset learning examples}{dann-example}
+
+\smallskip
+
+\section{Model Optimization and TFLite Conversion}
+
+\bigskip
+
+For inference on mobile devices, we used the TFLite converter. An example conversion code is shown below:
+
+\lstinputlisting[numbers=left]{convert.py}
+
+\smallskip
+
+\section{Other Technical Questions}
+
+\bigskip
+
+We have used the following resources for development:
+
+\begin{itemize}
+\item \textbf{ML frameworks:} Tensorflow 2.9 and TensorflowLite;
+\item \textbf{Hardware used for model training:} \textit{CPU} - AMD Ryzen 7 5800X, \textit{GPU} - 1x NVIDIA GeForce RTX 2080 Ti, \textit{RAM} - 64GB;
+\item \textbf{Pre-trained models:} VGG (pre-trained on ImageNet);
+\item \textbf{Additional data:} Zurich-RAW-to-RGB dataset.
+\end{itemize}
+
+\smallskip
+
+\section{Other details}
+
+\bigskip
+
+\begin{itemize}
+\item \textbf{Novelty degree of the solution:} To the best of our knowledge, we propose the first domain adaptation method for ISP. We also plan to publish an article with a more detailed description of our approach.
+\item \textbf{Planned submission of a solution description paper to Mobile AI 2022 workshop:} If possible, we would be very grateful for the publication. We are also open to further cooperation. I also left some information about myself in the \textit{Other/} folder.
+\item \textbf{General comments and impressions from the Mobile AI 2021 challenge:} Even though we learned about the competition rather late, we liked the organization of the event and it was interesting for us to participate.
+\end{itemize}
+
+\bigskip
+
+\printbibliography
+
+\end{document}
+
